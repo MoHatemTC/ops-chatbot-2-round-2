@@ -6,7 +6,7 @@ into normalized Document objects used by the rest of the pipeline.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from pathlib import Path
 
 from app.schemas.knowledge import Document, DocumentMetadata, MaterialType
@@ -30,20 +30,33 @@ class MaterialLoader(ABC):
 
     material_type: MaterialType
 
-    @abstractmethod
     def load(self, path: Path, cohort: str) -> Document:
         """Read `path` and return a fully-populated Document for `cohort`."""
+        raw_text = path.read_text(encoding="utf-8")
+        return self._build_document(
+            path=path,
+            cohort=cohort,
+            title=self._title_from_path(path),
+            raw_text=raw_text,
+        )
 
     def _title_from_path(self, path: Path) -> str:
         return path.stem.replace("_", " ").replace("-", " ").title()
 
-    def _build_document(self, path: Path, cohort: str, title: str, raw_text: str) -> Document:
+    def _build_document(
+        self,
+        path: Path,
+        cohort: str,
+        title: str,
+        raw_text: str,
+    ) -> Document:
         metadata = DocumentMetadata(
             title=title,
             source=str(path),
             type=self.material_type,
             cohort=cohort,
         )
+
         return Document.create(
             id=_document_id(cohort, self.material_type, title),
             raw_text=raw_text,
@@ -56,19 +69,11 @@ class FAQLoader(MaterialLoader):
 
     material_type = MaterialType.FAQ
 
-    def load(self, path: Path, cohort: str) -> Document:
-        raw_text = path.read_text(encoding="utf-8")
-        return self._build_document(path, cohort, self._title_from_path(path), raw_text)
-
 
 class OnboardingNoteLoader(MaterialLoader):
     """Loads onboarding notes (freeform prose material)."""
 
     material_type = MaterialType.ONBOARDING
-
-    def load(self, path: Path, cohort: str) -> Document:
-        raw_text = path.read_text(encoding="utf-8")
-        return self._build_document(path, cohort, self._title_from_path(path), raw_text)
 
 
 class ScheduleLoader(MaterialLoader):
@@ -76,20 +81,13 @@ class ScheduleLoader(MaterialLoader):
 
     material_type = MaterialType.SCHEDULE
 
-    def load(self, path: Path, cohort: str) -> Document:
-        raw_text = path.read_text(encoding="utf-8")
-        return self._build_document(path, cohort, self._title_from_path(path), raw_text)
-
 
 class ProgramDocLoader(MaterialLoader):
-    """Loads general program documents (freeform prose material, similar
-    to onboarding notes — e.g. curriculum overviews, policy documents)."""
+    """Loads general program documents such as curriculum overviews,
+    program guides, and policy documents.
+    """
 
     material_type = MaterialType.PROGRAM_DOC
-
-    def load(self, path: Path, cohort: str) -> Document:
-        raw_text = path.read_text(encoding="utf-8")
-        return self._build_document(path, cohort, self._title_from_path(path), raw_text)
 
 
 # Registry mapping material type -> loader class.
@@ -101,7 +99,11 @@ LOADERS: dict[MaterialType, type[MaterialLoader]] = {
 }
 
 
-def load_material(path: Path, material_type: MaterialType, cohort: str) -> Document:
+def load_material(
+    path: Path,
+    material_type: MaterialType,
+    cohort: str,
+) -> Document:
     """Entry point used by the ingestion pipeline to load a single file."""
     loader_cls = LOADERS[material_type]
     return loader_cls().load(path, cohort)
