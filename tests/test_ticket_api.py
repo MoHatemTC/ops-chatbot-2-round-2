@@ -17,6 +17,7 @@ than calling the TicketService directly. Together they verify:
 from __future__ import annotations
 
 import asyncio
+import base64
 
 import pytest
 from fastapi.testclient import TestClient
@@ -84,10 +85,17 @@ class TestListTickets:
 
         body = response.json()
 
-        assert isinstance(body, list)
+        assert isinstance(body, dict)
+        assert "tickets" in body
+        assert "next_cursor" in body
+
+        tickets = body["tickets"]
+
+        assert isinstance(tickets, list)
+        assert len(tickets) == 1
 
         ticket = next(
-            t for t in body
+            t for t in tickets
             if t["session_id"] == "session-1"
         )
 
@@ -125,9 +133,13 @@ class TestListTickets:
         assert response.status_code == 200
 
         body = response.json()
+        tickets = body["tickets"]
 
-        assert len(body) >= 1
-        assert all(ticket["status"] == "RESOLVED" for ticket in body)
+        assert len(tickets) >= 1
+        assert all(
+        ticket["status"] == "RESOLVED"
+        for ticket in tickets
+        )
 
     def test_list_filters_by_cohort(self, client):
         """Verify filtering tickets by cohort."""
@@ -152,11 +164,12 @@ class TestListTickets:
         assert response.status_code == 200
 
         body = response.json()
+        tickets = body["tickets"]
 
-        assert len(body) >= 1
+        assert len(tickets) >= 1
         assert all(
             ticket["cohort_id"] == "cohort-special"
-            for ticket in body
+            for ticket in tickets
         )
 
     def test_list_respects_limit(self, client):
@@ -184,7 +197,7 @@ class TestListTickets:
 
         body = response.json()
 
-        assert len(body) == 3
+        assert len(body["tickets"]) == 3
 
     def test_list_cursor_pagination(self, client):
         """Verify cursor pagination returns tickets after the cursor."""
@@ -205,22 +218,24 @@ class TestListTickets:
             )
             created.append(ticket)
 
+        cursor = base64.b64encode(
+            f"{created[0].created_at.isoformat()}|{created[0].id}".encode()
+        ).decode()
+
         response = client.get(
             f"{TICKETS_PREFIX}/",
-            params={
-                "cursor_created_at": created[0].created_at.isoformat(),
-                "cursor_id": created[0].id,
-            },
+            params={"cursor": cursor},
         )
 
         assert response.status_code == 200
 
         body = response.json()
+        tickets = body["tickets"]
 
-        assert len(body) == 2
+        assert len(tickets) == 2
         assert all(
             ticket["id"] != created[0].id
-            for ticket in body
+            for ticket in tickets
         )
 
     def test_invalid_status_returns_422(self, client):
@@ -232,6 +247,7 @@ class TestListTickets:
         )
 
         assert response.status_code == 422
+
 
 class TestViewTicket:
     """Tests for GET /tickets/{ticket_id}."""
@@ -377,37 +393,6 @@ class TestResolveTicket:
 
         assert response.status_code == 422
 
-    def test_resolve_with_empty_resolution_note_returns_422(self, client):
-        """Verify an empty resolution note is rejected.
-
-        This test assumes ResolveTicketRequest requires a non-empty
-        string (e.g. Field(min_length=1)). If empty strings are currently
-        accepted, this test should remain commented until validation is
-        added.
-        """
-
-        created = asyncio.run(
-            ticket_service.create_ticket(
-                EscalationEvent(
-                    session_id="session-4",
-                    cohort_id="cohort-a",
-                ),
-                ConversationSummary(
-                    summary={"text": "issue"},
-                ),
-            )
-        )
-
-        response = client.post(
-            f"{TICKETS_PREFIX}/{created.id}/resolve",
-            json={
-                "resolution_note": "",
-            },
-        )
-
-        # Enable after adding min_length=1 validation.
-        # assert response.status_code == 422
-
 
 class TestAuthRequired:
     """Authentication tests for the ticket endpoints."""
@@ -440,4 +425,4 @@ class TestAuthRequired:
             },
         )
 
-        assert response.status_code == 401        
+        assert response.status_code == 401

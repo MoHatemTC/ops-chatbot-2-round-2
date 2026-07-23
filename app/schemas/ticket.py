@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.ticket import TicketStatus
 
@@ -24,6 +24,8 @@ class ConversationSummary(BaseModel):
 class TicketResponse(BaseModel):
     """Response returned for ticket operations."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     session_id: str
     cohort_id: str
@@ -37,3 +39,12 @@ class ResolveTicketRequest(BaseModel):
     """Request body for resolving a ticket."""
 
     resolution_note: str
+
+
+class TicketListResponse(BaseModel):
+    """Paginated response for listing tickets."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    tickets: list[TicketResponse]
+    next_cursor: str | None = None
