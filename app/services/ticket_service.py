@@ -82,17 +82,17 @@ class TicketService:
             if cursor_created_at and cursor_id:
                 statement = statement.where(
                     or_(
-                        Ticket.created_at > cursor_created_at,
+                        Ticket.created_at < cursor_created_at,
                         and_(
                             Ticket.created_at == cursor_created_at,
-                            Ticket.id > cursor_id,
+                            Ticket.id < cursor_id,
                         ),
                     )
                 )
 
             statement = (
                 statement
-                .order_by(Ticket.created_at, Ticket.id)
+                .order_by(Ticket.created_at.desc(), Ticket.id.desc(),)
                 .limit(limit)
             )
 
